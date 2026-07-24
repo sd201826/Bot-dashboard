@@ -27,10 +27,8 @@
 
     <script>
         const CLIENT_ID = '1530226444037394526';
-        // The URL Discord will redirect back to after login:
-        const REDIRECT_URI = 'http://localhost:3000/dashboard.html';
+        const REDIRECT_URI = 'https://sd201826.github.io/Bot-dashboard/dashboard.html';
 
-        // Auto-redirect to dashboard if token is already stored in browser
         if (localStorage.getItem('discord_access_token')) {
             window.location.href = 'dashboard.html';
         }
