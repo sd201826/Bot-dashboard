@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Bot Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans flex items-center justify-center min-h-screen py-10">
+
+    <!-- Main Container -->
+    <div id="app" class="text-center w-full max-w-lg px-4">
+        <h1 class="text-3xl font-bold mb-4">Bot Control Panel</h1>
+        <p class="text-gray-400 mb-6">Authenticating...</p>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const CLIENT_ID = '1530226444037394526'; 
+        const OWNER_ID = '1519986222745784351';
+        const REDIRECT_URI = 'http://localhost:3000/dashboard.html'; 
+
+        // --- YOUR WEBHOOK URL ---
+        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1530232601108025476/ZkxzghTn7szHYPZuUSls8A6p4ftd52rrJ9njvzZTLI7EdwgVSMWgo2KTPrFQ6Oa0vf5G';
+
+        const appDiv = document.getElementById('app');
+
+        // Function 1: Quick Action Buttons
+        function sendBotCommand(actionName) {
+            fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    embeds: [{
+                        title: "🎛️ Dashboard Command Executed",
+                        description: `Owner triggered action: **${actionName}**`,
+                        color: 5793266, // Discord Blurple
+                        timestamp: new Date().toISOString()
+                    }]
+                })
+            })
+            .then(() => alert(`Command "${actionName}" sent to Discord!`))
+            .catch(err => alert('Failed to send webhook request. Check browser console.'));
+        }
+
+        // Function 2: Send Custom Announcement Embed
+        function sendCustomAnnouncement() {
+            const title = document.getElementById('embed-title').value;
+            const message = document.getElementById('embed-message').value;
+            const colorHex = document.getElementById('embed-color').value;
+
+            if (!title || !message) {
+                alert('Please enter both a title and a message.');
+                return;
+            }
+
+            // Convert HEX color to integer for Discord API
+            const colorInt = parseInt(colorHex.replace('#', ''), 16);
+
+            fetch(WEBHOOK_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    embeds: [{
+                        title: title,
+                        description: message,
+                        color: colorInt,
+                        footer: { text: "Posted via Owner Dashboard" },
+                        timestamp: new Date().toISOString()
+                    }]
+                })
+            })
+            .then(() => {
+                alert('Announcement posted successfully!');
+                document.getElementById('embed-title').value = '';
+                document.getElementById('embed-message').value = '';
+            })
+            .catch(err => alert('Failed to post announcement.'));
+        }
+
+        // OAuth2 Authentication Check
+        const fragment = new URLSearchParams(window.location.hash.slice(1));
+        const accessToken = fragment.get('access_token');
+
+        if (!accessToken) {
+            // Show Login Button if no token exists
+            const loginUrl = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=identify`;
+            
+            appDiv.innerHTML = `
+                <div class="bg-gray-800 p-8 rounded-xl border border-gray-700 shadow-2xl">
+                    <h1 class="text-3xl font-bold mb-3">Owner Login Required</h1>
+                    <p class="text-gray-400 mb-6">Log in with your Discord account to access your private panel.</p>
+                    <a href="${loginUrl}" class="bg-[#5865F2] hover:bg-[#4752C4] px-6 py-3.5 rounded-lg text-white font-bold transition inline-block">
+                        Log in with Discord
+                    </a>
+                </div>
+            `;
+        } else {
+            // Validate Token with Discord
+            fetch('https://discord.com/api/users/@me', {
+                headers: { authorization: `Bearer ${accessToken}` }
+            })
+            .then(res => res.json())
+            .then(user => {
+                if (user.id === OWNER_ID) {
+                    // OWNER CONFIRMED - Render Full Dashboard
+                    appDiv.innerHTML = `
+                        <div class="space-y-6">
+                            <!-- Header -->
+                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                                <h1 class="text-2xl font-bold text-green-400">Welcome, ${user.username}!</h1>
+                                <p class="text-xs text-gray-400 mt-1">Owner Access Authorized</p>
+                            </div>
+
+                            <!-- Quick Controls -->
+                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 text-left">
+                                <h2 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Quick Controls</h2>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <button onclick="sendBotCommand('Restart Bot')" class="bg-red-600 hover:bg-red-700 py-2 rounded font-bold transition">Restart Bot</button>
+                                    <button onclick="sendBotCommand('Clear Cache')" class="bg-blue-600 hover:bg-blue-700 py-2 rounded font-bold transition">Clear Cache</button>
+                                </div>
+                            </div>
+
+                            <!-- Custom Announcement Builder -->
+                            <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 text-left space-y-4">
+                                <h2 class="text-lg font-bold border-b border-gray-700 pb-2">Post Server Announcement</h2>
+                                
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-400 mb-1">TITLE</label>
+                                    <input id="embed-title" type="text" placeholder="e.g. Server Maintenance" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#5865F2]" />
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-400 mb-1">MESSAGE CONTENT</label>
+                                    <textarea id="embed-message" rows="3" placeholder="Write your announcement message here..." class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#5865F2]"></textarea>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-400 mb-1">EMBED COLOR</label>
+                                    <input id="embed-color" type="color" value="#5865f2" class="h-10 w-full bg-gray-900 border border-gray-700 rounded cursor-pointer p-1" />
+                                </div>
+
+                                <button onclick="sendCustomAnnouncement()" class="bg-emerald-600 hover:bg-emerald-700 w-full py-2.5 rounded font-bold transition mt-2">
+                                    Send Announcement
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // KICK OUT
+                    appDiv.innerHTML = `
+                        <div class="bg-gray-800 p-8 rounded-xl border border-red-500/50">
+                            <h1 class="text-2xl font-bold text-red-500 mb-2">Access Denied</h1>
+                            <p class="text-gray-400 text-sm">You are not authorized to access this panel.</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(() => {
+                appDiv.innerHTML = `<p class="text-red-500">Failed to connect to Discord API.</p>`;
+            });
+        }
+    </script>
+</body>
+</html>
