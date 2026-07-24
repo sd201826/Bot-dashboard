@@ -1,164 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Private Bot Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bot Owner Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-white font-sans flex items-center justify-center min-h-screen py-10">
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-4">
 
-    <div id="app" class="text-center w-full max-w-lg px-4">
-        <h1 class="text-3xl font-bold mb-4">Bot Control Panel</h1>
-        <p class="text-gray-400 mb-6">Authenticating credentials...</p>
+  <!-- Application Configuration -->
+  <script>
+    const CLIENT_ID = '1530226444037394526';
+    const OWNER_ID = '1519986222745784351';
+    const REDIRECT_URI = 'https://sd201826.github.io/Bot-dashboard/dashboard.html';
+    
+    // Built OAuth2 Authorization URL
+    const OAUTH_URL = `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=token&scope=identify`;
+  </script>
+
+  <!-- Container -->
+  <div id="app" class="w-full max-w-md bg-gray-800 rounded-xl p-6 shadow-2xl border border-gray-700 text-center">
+    
+    <!-- State 1: Loading -->
+    <div id="state-loading">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mb-3"></div>
+      <p class="text-gray-400 text-sm">Authenticating with Discord...</p>
     </div>
 
-    <script>
-        const OWNER_ID = '1519986222745784351';
-        const WEBHOOK_URL = 'https://discord.com/api/webhooks/1530232601108025476/ZkxzghTn7szHYPZuUSls8A6p4ftd52rrJ9njvzZTLI7EdwgVSMWgo2KTPrFQ6Oa0vf5G';
+    <!-- State 2: Login Required -->
+    <div id="state-login" class="hidden">
+      <h1 class="text-2xl font-bold mb-2 text-indigo-400">Bot Control Panel</h1>
+      <p class="text-gray-400 text-sm mb-6">Log in with Discord to verify owner access.</p>
+      <a id="login-btn" href="#" class="inline-block w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold transition shadow-lg">
+        Log in with Discord
+      </a>
+    </div>
 
-        const appDiv = document.getElementById('app');
+    <!-- State 3: Access Denied -->
+    <div id="state-denied" class="hidden">
+      <div class="text-red-500 text-5xl mb-3">⛔</div>
+      <h1 class="text-2xl font-bold mb-2 text-red-400">Access Denied</h1>
+      <p id="denied-msg" class="text-gray-300 text-sm mb-6">Your Discord ID does not match the bot owner configuration.</p>
+      <button onclick="logout()" class="w-full py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition">
+        Log Out
+      </button>
+    </div>
 
-        const fragment = new URLSearchParams(window.location.hash.slice(1));
-        let accessToken = fragment.get('access_token') || localStorage.getItem('discord_access_token');
+    <!-- State 4: Owner Dashboard (Authorized) -->
+    <div id="state-dashboard" class="hidden text-left">
+      <div class="flex items-center justify-between pb-4 border-b border-gray-700 mb-6">
+        <div class="flex items-center space-x-3">
+          <img id="user-avatar" class="w-10 h-10 rounded-full border border-indigo-500" src="" alt="Avatar">
+          <div>
+            <p id="user-name" class="font-bold text-sm"></p>
+            <span class="text-xs bg-green-900/80 text-green-300 px-2 py-0.5 rounded-full border border-green-600">Owner Verified</span>
+          </div>
+        </div>
+        <button onclick="logout()" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1.5 rounded transition">
+          Log Out
+        </button>
+      </div>
 
-        if (fragment.get('access_token')) {
-            localStorage.setItem('discord_access_token', accessToken);
-            window.location.hash = ''; 
-        }
+      <h2 class="text-md font-semibold mb-3 text-indigo-300">Bot Controls</h2>
+      
+      <form id="webhook-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1">Webhook URL</label>
+          <input type="url" id="webhook-url" required placeholder="https://discord.com/api/webhooks/..." class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1">Message / Command Payload</label>
+          <textarea id="webhook-msg" required rows="3" placeholder="Enter message or command to send..." class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-indigo-500"></textarea>
+        </div>
+        <button type="submit" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold text-sm transition shadow-lg">
+          Execute Action
+        </button>
+      </form>
 
-        if (!accessToken) {
-            window.location.href = 'index.html';
+      <div id="status-alert" class="mt-4 p-3 rounded-lg text-xs hidden"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const stateLoading = document.getElementById('state-loading');
+    const stateLogin = document.getElementById('state-login');
+    const stateDenied = document.getElementById('state-denied');
+    const stateDashboard = document.getElementById('state-dashboard');
+    const loginBtn = document.getElementById('login-btn');
+
+    loginBtn.href = OAUTH_URL;
+
+    async function init() {
+      // Get Access Token from URL fragment or localStorage
+      const fragment = new URLSearchParams(window.location.hash.substring(1));
+      let accessToken = fragment.get('access_token');
+
+      if (accessToken) {
+        localStorage.setItem('discord_token', accessToken);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        accessToken = localStorage.getItem('discord_token');
+      }
+
+      if (!accessToken) {
+        showState(stateLogin);
+        return;
+      }
+
+      // Fetch Logged-in User Profile
+      try {
+        const res = await fetch('https://discord.com/api/v10/users/@me', {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+
+        if (!res.ok) throw new Error('Session expired');
+
+        const user = await res.json();
+
+        // Validate Owner ID
+        if (user.id === OWNER_ID) {
+          document.getElementById('user-name').textContent = user.username;
+          document.getElementById('user-avatar').src = user.avatar 
+            ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` 
+            : `https://cdn.discordapp.com/embed/avatars/0.png`;
+          showState(stateDashboard);
         } else {
-            fetch('https://discord.com/api/users/@me', {
-                headers: { authorization: `Bearer ${accessToken}` }
-            })
-            .then(res => res.json())
-            .then(user => {
-                if (user.id === OWNER_ID) {
-                    renderDashboard(user);
-                } else {
-                    renderAccessDenied(user);
-                }
-            })
-            .catch(() => {
-                localStorage.removeItem('discord_access_token');
-                appDiv.innerHTML = `
-                    <div class="bg-gray-800 p-6 rounded-xl border border-red-500/50">
-                        <p class="text-red-500 mb-4">Session expired or invalid token.</p>
-                        <a href="index.html" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm font-bold">Back to Login</a>
-                    </div>
-                `;
-            });
+          document.getElementById('denied-msg').textContent = `Account ID (${user.id}) is not authorized.`;
+          showState(stateDenied);
         }
+      } catch (err) {
+        localStorage.removeItem('discord_token');
+        showState(stateLogin);
+      }
+    }
 
-        function logout() {
-            localStorage.removeItem('discord_access_token');
-            window.location.href = 'index.html';
+    function showState(element) {
+      stateLoading.classList.add('hidden');
+      stateLogin.classList.add('hidden');
+      stateDenied.classList.add('hidden');
+      stateDashboard.classList.add('hidden');
+      element.classList.remove('hidden');
+    }
+
+    function logout() {
+      localStorage.removeItem('discord_token');
+      window.location.href = REDIRECT_URI;
+    }
+
+    // Handle Webhook Execution
+    document.getElementById('webhook-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const url = document.getElementById('webhook-url').value;
+      const content = document.getElementById('webhook-msg').value;
+      const alertBox = document.getElementById('status-alert');
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        });
+
+        if (res.ok || res.status === 204) {
+          alertBox.className = 'mt-4 p-3 rounded-lg text-xs bg-green-900/50 border border-green-500 text-green-200';
+          alertBox.textContent = 'Action executed successfully!';
+        } else {
+          throw new Error(`HTTP Error ${res.status}`);
         }
+      } catch (err) {
+        alertBox.className = 'mt-4 p-3 rounded-lg text-xs bg-red-900/50 border border-red-500 text-red-200';
+        alertBox.textContent = 'Execution failed: ' + err.message;
+      }
+      alertBox.classList.remove('hidden');
+    });
 
-        function sendBotCommand(actionName) {
-            fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    embeds: [{
-                        title: "🎛️ Dashboard Command Executed",
-                        description: `Owner triggered action: **${actionName}**`,
-                        color: 5793266,
-                        timestamp: new Date().toISOString()
-                    }]
-                })
-            })
-            .then(() => alert(`Command "${actionName}" sent!`))
-            .catch(() => alert('Failed to send webhook request.'));
-        }
-
-        function sendCustomAnnouncement() {
-            const title = document.getElementById('embed-title').value;
-            const message = document.getElementById('embed-message').value;
-            const colorHex = document.getElementById('embed-color').value;
-
-            if (!title || !message) {
-                alert('Please enter both a title and a message.');
-                return;
-            }
-
-            const colorInt = parseInt(colorHex.replace('#', ''), 16);
-
-            fetch(WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    embeds: [{
-                        title: title,
-                        description: message,
-                        color: colorInt,
-                        footer: { text: "Posted via Owner Dashboard" },
-                        timestamp: new Date().toISOString()
-                    }]
-                })
-            })
-            .then(() => {
-                alert('Announcement posted successfully!');
-                document.getElementById('embed-title').value = '';
-                document.getElementById('embed-message').value = '';
-            })
-            .catch(() => alert('Failed to post announcement.'));
-        }
-
-        function renderDashboard(user) {
-            appDiv.innerHTML = `
-                <div class="space-y-6">
-                    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 flex items-center justify-between">
-                        <div class="text-left">
-                            <h1 class="text-xl font-bold text-green-400">Welcome, ${user.username}!</h1>
-                            <p class="text-xs text-gray-400">Owner Access Authorized</p>
-                        </div>
-                        <button onclick="logout()" class="bg-gray-700 hover:bg-gray-600 text-xs px-3 py-1.5 rounded text-gray-300 font-semibold transition">
-                            Log out
-                        </button>
-                    </div>
-
-                    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 text-left">
-                        <h2 class="text-lg font-bold mb-4 border-b border-gray-700 pb-2">Quick Controls</h2>
-                        <div class="grid grid-cols-2 gap-3">
-                            <button onclick="sendBotCommand('Restart Bot')" class="bg-red-600 hover:bg-red-700 py-2 rounded font-bold transition text-sm">Restart Bot</button>
-                            <button onclick="sendBotCommand('Clear Cache')" class="bg-blue-600 hover:bg-blue-700 py-2 rounded font-bold transition text-sm">Clear Cache</button>
-                        </div>
-                    </div>
-
-                    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 text-left space-y-4">
-                        <h2 class="text-lg font-bold border-b border-gray-700 pb-2">Post Server Announcement</h2>
-                        <div>
-                            <label class="block text-xs font-semibold text-gray-400 mb-1">TITLE</label>
-                            <input id="embed-title" type="text" placeholder="e.g. Maintenance Update" class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#5865F2]" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-gray-400 mb-1">MESSAGE CONTENT</label>
-                            <textarea id="embed-message" rows="3" placeholder="Write message here..." class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-[#5865F2]"></textarea>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-gray-400 mb-1">EMBED COLOR</label>
-                            <input id="embed-color" type="color" value="#5865f2" class="h-10 w-full bg-gray-900 border border-gray-700 rounded cursor-pointer p-1" />
-                        </div>
-                        <button onclick="sendCustomAnnouncement()" class="bg-emerald-600 hover:bg-emerald-700 w-full py-2.5 rounded font-bold transition text-sm mt-2">
-                            Send Announcement
-                        </button>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderAccessDenied(user) {
-            appDiv.innerHTML = `
-                <div class="bg-gray-800 p-8 rounded-xl border border-red-500/50">
-                    <h1 class="text-2xl font-bold text-red-500 mb-2">Access Denied</h1>
-                    <p class="text-gray-400 text-sm mb-4">Account ID (${user.id}) is not authorized.</p>
-                    <button onclick="logout()" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-xs font-bold">Try Another Account</button>
-                </div>
-            `;
-        }
-    </script>
+    init();
+  </script>
 </body>
 </html>
